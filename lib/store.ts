@@ -115,7 +115,7 @@ const state = (globalStore.__flagStore ??= seedState());
 const flags = state.flags;
 
 export function listFlags(): FeatureFlag[] {
-  return flags;
+  return flags.map((f) => ({ ...f }));
 }
 
 export function getFlag(id: string): FeatureFlag | undefined {
