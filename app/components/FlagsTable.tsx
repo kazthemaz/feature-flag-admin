@@ -88,8 +88,10 @@ export default function FlagsTable() {
       const body = await res.json().catch(() => null);
       if (res.status === 403) {
         setAccessDenied(body?.error ?? "You are not allowed to do that.");
+        setError(null);
       } else {
         setError(body?.error ?? "Request failed");
+        setAccessDenied(null);
       }
       return false;
     }
