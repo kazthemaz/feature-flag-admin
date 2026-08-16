@@ -1,9 +1,11 @@
+import FlagsTable from "./components/FlagsTable";
+
 export default function Home() {
   return (
     <main className="p-6">
       <h1 className="text-2xl font-bold">Feature Flags</h1>
-      <div className="mt-4 rounded border border-dashed border-gray-300 p-8 text-center text-gray-500">
-        No feature flags yet.
+      <div className="mt-4">
+        <FlagsTable />
       </div>
     </main>
   );
