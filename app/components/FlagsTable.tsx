@@ -53,13 +53,17 @@ export default function FlagsTable() {
   );
 
   const refresh = useCallback(async () => {
-    const res = await fetch("/api/flags");
-    if (!res.ok) {
-      setError("Failed to load flags");
-      return;
+    try {
+      const res = await fetch("/api/flags", { cache: "no-store" });
+      if (!res.ok) {
+        setError("Failed to load flags");
+        return;
+      }
+      setFlags(await res.json());
+      setError(null);
+    } catch {
+      setError("Failed to load flags: server unreachable");
     }
-    setFlags(await res.json());
-    setError(null);
   }, []);
 
   useEffect(() => {
@@ -67,10 +71,16 @@ export default function FlagsTable() {
   }, [refresh]);
 
   async function request(path: string, init: RequestInit) {
-    const res = await fetch(path, {
-      headers: { "Content-Type": "application/json" },
-      ...init,
-    });
+    let res: Response;
+    try {
+      res = await fetch(path, {
+        headers: { "Content-Type": "application/json" },
+        ...init,
+      });
+    } catch {
+      setError("Request failed: server unreachable");
+      return false;
+    }
     if (!res.ok) {
       const body = await res.json().catch(() => null);
       setError(body?.error ?? "Request failed");

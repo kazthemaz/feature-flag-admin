@@ -1,22 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   deleteFlag,
+  isEnvironment,
+  isFlagStatus,
   updateFlag,
-  type Environment,
-  type FlagStatus,
   type UpdateFlagInput,
 } from "@/lib/store";
-
-const STATUSES: FlagStatus[] = ["on", "off"];
-const ENVIRONMENTS: Environment[] = ["dev", "staging", "prod"];
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const body = await req.json();
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "invalid JSON body" }, { status: 400 });
+  }
   const { name, description, status, rolloutPct, environment, changedBy } =
-    body ?? {};
+    (body ?? {}) as Record<string, unknown>;
 
   const input: UpdateFlagInput = {
     changedBy: typeof changedBy === "string" && changedBy ? changedBy : "admin",
@@ -41,7 +43,7 @@ export async function PATCH(
     input.description = description;
   }
   if (status !== undefined) {
-    if (!STATUSES.includes(status)) {
+    if (!isFlagStatus(status)) {
       return NextResponse.json(
         { error: "status must be 'on' or 'off'" },
         { status: 400 }
@@ -64,7 +66,7 @@ export async function PATCH(
     input.rolloutPct = rolloutPct;
   }
   if (environment !== undefined) {
-    if (!ENVIRONMENTS.includes(environment)) {
+    if (!isEnvironment(environment)) {
       return NextResponse.json(
         { error: "environment must be 'dev', 'staging', or 'prod'" },
         { status: 400 }

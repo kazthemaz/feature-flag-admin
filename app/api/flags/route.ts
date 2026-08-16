@@ -1,22 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  createFlag,
-  listFlags,
-  type Environment,
-  type FlagStatus,
-} from "@/lib/store";
+import { createFlag, isEnvironment, isFlagStatus, listFlags } from "@/lib/store";
 
-const STATUSES: FlagStatus[] = ["on", "off"];
-const ENVIRONMENTS: Environment[] = ["dev", "staging", "prod"];
+export const dynamic = "force-dynamic";
 
 export async function GET() {
   return NextResponse.json(listFlags());
 }
 
 export async function POST(req: NextRequest) {
-  const body = await req.json();
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "invalid JSON body" }, { status: 400 });
+  }
   const { name, description, status, rolloutPct, environment, changedBy } =
-    body ?? {};
+    (body ?? {}) as Record<string, unknown>;
 
   if (typeof name !== "string" || name.trim() === "") {
     return NextResponse.json({ error: "name is required" }, { status: 400 });
@@ -27,7 +26,7 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
   }
-  if (!STATUSES.includes(status)) {
+  if (!isFlagStatus(status)) {
     return NextResponse.json(
       { error: "status must be 'on' or 'off'" },
       { status: 400 }
@@ -44,7 +43,7 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
   }
-  if (!ENVIRONMENTS.includes(environment)) {
+  if (!isEnvironment(environment)) {
     return NextResponse.json(
       { error: "environment must be 'dev', 'staging', or 'prod'" },
       { status: 400 }

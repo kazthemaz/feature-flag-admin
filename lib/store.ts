@@ -12,6 +12,14 @@ export interface FeatureFlag {
   lastChangedAt: string;
 }
 
+export function isFlagStatus(v: unknown): v is FlagStatus {
+  return v === "on" || v === "off";
+}
+
+export function isEnvironment(v: unknown): v is Environment {
+  return v === "dev" || v === "staging" || v === "prod";
+}
+
 interface StoreState {
   flags: FeatureFlag[];
   nextId: number;
