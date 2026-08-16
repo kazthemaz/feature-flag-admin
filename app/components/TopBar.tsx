@@ -1,11 +1,10 @@
 "use client";
 
-import { useState } from "react";
-
-const ROLES = ["Engineer", "Ops", "Compliance"] as const;
+import type { Role } from "@/lib/store";
+import { ROLES, useRole } from "./RoleContext";
 
 export default function TopBar() {
-  const [role, setRole] = useState<(typeof ROLES)[number]>("Engineer");
+  const { role, setRole } = useRole();
 
   return (
     <header className="flex items-center justify-between border-b border-gray-200 px-6 py-3">
@@ -15,7 +14,7 @@ export default function TopBar() {
         <select
           className="rounded border border-gray-300 px-2 py-1"
           value={role}
-          onChange={(e) => setRole(e.target.value as (typeof ROLES)[number])}
+          onChange={(e) => setRole(e.target.value as Role)}
         >
           {ROLES.map((r) => (
             <option key={r} value={r}>

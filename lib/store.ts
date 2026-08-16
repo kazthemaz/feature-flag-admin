@@ -20,9 +20,31 @@ export function isEnvironment(v: unknown): v is Environment {
   return v === "dev" || v === "staging" || v === "prod";
 }
 
+export type Role = "Engineer" | "Ops" | "Compliance";
+
+export function isRole(v: unknown): v is Role {
+  return v === "Engineer" || v === "Ops" || v === "Compliance";
+}
+
+export type AuditAction = "create" | "update" | "delete";
+
+export interface AuditEntry {
+  id: string;
+  action: AuditAction;
+  flagId: string;
+  flagName: string;
+  oldValue: FeatureFlag | null;
+  newValue: FeatureFlag | null;
+  actor: string;
+  role: Role;
+  timestamp: string;
+}
+
 interface StoreState {
   flags: FeatureFlag[];
   nextId: number;
+  auditLog: AuditEntry[];
+  nextAuditId: number;
 }
 
 const globalStore = globalThis as unknown as { __flagStore?: StoreState };
@@ -106,13 +128,49 @@ function seedState(): StoreState {
     ),
   ];
   seeds.forEach((f, i) => (f.id = `flag-${i + 1}`));
-  return { flags: seeds, nextId: seeds.length + 1 };
+  return {
+    flags: seeds,
+    nextId: seeds.length + 1,
+    auditLog: [],
+    nextAuditId: 1,
+  };
 }
 
 // Stored on globalThis so the in-memory data survives Next.js dev-mode
 // module recompiles; still resets on server restart.
 const state = (globalStore.__flagStore ??= seedState());
 const flags = state.flags;
+const auditLog = state.auditLog;
+
+function appendAudit(
+  action: AuditAction,
+  flagId: string,
+  flagName: string,
+  oldValue: FeatureFlag | null,
+  newValue: FeatureFlag | null,
+  actor: string,
+  role: Role
+): void {
+  auditLog.push({
+    id: `audit-${state.nextAuditId++}`,
+    action,
+    flagId,
+    flagName,
+    oldValue,
+    newValue,
+    actor,
+    role,
+    timestamp: new Date().toISOString(),
+  });
+}
+
+export function listAuditLog(): AuditEntry[] {
+  return auditLog.map((e) => ({
+    ...e,
+    oldValue: e.oldValue && { ...e.oldValue },
+    newValue: e.newValue && { ...e.newValue },
+  }));
+}
 
 export function listFlags(): FeatureFlag[] {
   return flags.map((f) => ({ ...f }));
@@ -129,6 +187,7 @@ export interface CreateFlagInput {
   rolloutPct: number;
   environment: Environment;
   changedBy: string;
+  role: Role;
 }
 
 export function createFlag(input: CreateFlagInput): FeatureFlag {
@@ -143,6 +202,17 @@ export function createFlag(input: CreateFlagInput): FeatureFlag {
     lastChangedAt: new Date().toISOString(),
   };
   flags.push(flag);
+  // Mutation and audit entry happen in the same operation; no caller can
+  // create a flag without producing an audit record.
+  appendAudit(
+    "create",
+    flag.id,
+    flag.name,
+    null,
+    { ...flag },
+    input.changedBy,
+    input.role
+  );
   return flag;
 }
 
@@ -151,7 +221,7 @@ export type UpdateFlagInput = Partial<
     FeatureFlag,
     "name" | "description" | "status" | "rolloutPct" | "environment"
   >
-> & { changedBy: string };
+> & { changedBy: string; role: Role };
 
 export function updateFlag(
   id: string,
@@ -159,16 +229,19 @@ export function updateFlag(
 ): FeatureFlag | undefined {
   const flag = getFlag(id);
   if (!flag) return undefined;
-  const { changedBy, ...fields } = input;
+  const { changedBy, role, ...fields } = input;
+  const oldValue = { ...flag };
   Object.assign(flag, fields);
   flag.lastChangedBy = changedBy;
   flag.lastChangedAt = new Date().toISOString();
+  appendAudit("update", flag.id, flag.name, oldValue, { ...flag }, changedBy, role);
   return flag;
 }
 
-export function deleteFlag(id: string): boolean {
+export function deleteFlag(id: string, actor: string, role: Role): boolean {
   const idx = flags.findIndex((f) => f.id === id);
   if (idx === -1) return false;
-  flags.splice(idx, 1);
+  const [removed] = flags.splice(idx, 1);
+  appendAudit("delete", removed.id, removed.name, { ...removed }, null, actor, role);
   return true;
 }
