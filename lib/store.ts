@@ -139,6 +139,9 @@ function seedState(): StoreState {
 // Stored on globalThis so the in-memory data survives Next.js dev-mode
 // module recompiles; still resets on server restart.
 const state = (globalStore.__flagStore ??= seedState());
+// Backfill audit fields on store state persisted from before audit support.
+state.auditLog ??= [];
+state.nextAuditId ??= 1;
 const flags = state.flags;
 const auditLog = state.auditLog;
 
