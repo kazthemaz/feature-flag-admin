@@ -39,6 +39,7 @@ export default function AuditTable() {
   const [flagNames, setFlagNames] = useState<string[]>([]);
 
   useEffect(() => {
+    let cancelled = false;
     const params = new URLSearchParams();
     if (flagFilter) params.set("flag", flagFilter);
     if (actionFilter) params.set("action", actionFilter);
@@ -47,6 +48,7 @@ export default function AuditTable() {
       .then(async (res) => {
         if (!res.ok) throw new Error();
         const data: AuditEntry[] = await res.json();
+        if (cancelled) return;
         setEntries(data);
         setError(null);
         if (!query) {
@@ -55,8 +57,15 @@ export default function AuditTable() {
           );
         }
       })
-      .catch(() => setError("Failed to load audit log"))
-      .finally(() => setLoading(false));
+      .catch(() => {
+        if (!cancelled) setError("Failed to load audit log");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [flagFilter, actionFilter]);
 
   const filters = useMemo(
@@ -111,9 +120,12 @@ export default function AuditTable() {
   if (loading) return <p className="text-gray-500">Loading audit log…</p>;
   if (error)
     return (
-      <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-        {error}
-      </p>
+      <div>
+        {filters}
+        <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {error}
+        </p>
+      </div>
     );
   if (entries.length === 0)
     return (
