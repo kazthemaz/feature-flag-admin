@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import type { AuditEntry, FeatureFlag } from "@/lib/store";
+import { useEffect, useMemo, useState } from "react";
+import type { AuditAction, AuditEntry, FeatureFlag } from "@/lib/store";
+
+const ACTIONS: AuditAction[] = ["create", "update", "delete"];
 
 const ACTION_STYLES: Record<AuditEntry["action"], string> = {
   create: "bg-green-100 text-green-800",
@@ -32,16 +34,79 @@ export default function AuditTable() {
   const [entries, setEntries] = useState<AuditEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [flagFilter, setFlagFilter] = useState("");
+  const [actionFilter, setActionFilter] = useState("");
+  const [flagNames, setFlagNames] = useState<string[]>([]);
 
   useEffect(() => {
-    fetch("/api/audit", { cache: "no-store" })
+    const params = new URLSearchParams();
+    if (flagFilter) params.set("flag", flagFilter);
+    if (actionFilter) params.set("action", actionFilter);
+    const query = params.toString();
+    fetch(`/api/audit${query ? `?${query}` : ""}`, { cache: "no-store" })
       .then(async (res) => {
         if (!res.ok) throw new Error();
-        setEntries(await res.json());
+        const data: AuditEntry[] = await res.json();
+        setEntries(data);
+        setError(null);
+        if (!query) {
+          setFlagNames(
+            Array.from(new Set(data.map((e) => e.flagName))).sort()
+          );
+        }
       })
       .catch(() => setError("Failed to load audit log"))
       .finally(() => setLoading(false));
-  }, []);
+  }, [flagFilter, actionFilter]);
+
+  const filters = useMemo(
+    () => (
+      <div className="mb-3 flex items-center gap-3 text-sm">
+        <label className="flex items-center gap-2">
+          Flag
+          <select
+            className="rounded border border-gray-300 px-2 py-1"
+            value={flagFilter}
+            onChange={(e) => setFlagFilter(e.target.value)}
+          >
+            <option value="">All flags</option>
+            {flagNames.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex items-center gap-2">
+          Action
+          <select
+            className="rounded border border-gray-300 px-2 py-1"
+            value={actionFilter}
+            onChange={(e) => setActionFilter(e.target.value)}
+          >
+            <option value="">All actions</option>
+            {ACTIONS.map((a) => (
+              <option key={a} value={a}>
+                {a}
+              </option>
+            ))}
+          </select>
+        </label>
+        {(flagFilter || actionFilter) && (
+          <button
+            onClick={() => {
+              setFlagFilter("");
+              setActionFilter("");
+            }}
+            className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50"
+          >
+            Clear filters
+          </button>
+        )}
+      </div>
+    ),
+    [flagFilter, actionFilter, flagNames]
+  );
 
   if (loading) return <p className="text-gray-500">Loading audit log…</p>;
   if (error)
@@ -52,13 +117,19 @@ export default function AuditTable() {
     );
   if (entries.length === 0)
     return (
-      <div className="rounded border border-dashed border-gray-300 p-8 text-center text-gray-500">
-        No audit entries yet.
+      <div>
+        {filters}
+        <div className="rounded border border-dashed border-gray-300 p-8 text-center text-gray-500">
+          {flagFilter || actionFilter
+            ? "No audit entries match the filters."
+            : "No audit entries yet."}
+        </div>
       </div>
     );
 
   return (
     <div className="overflow-x-auto">
+      {filters}
       <table className="w-full border-collapse text-sm">
         <thead>
           <tr className="border-b border-gray-200 text-left text-gray-600">
