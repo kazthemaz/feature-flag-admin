@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createFlag, isEnvironment, isFlagStatus, listFlags } from "@/lib/store";
+import {
+  createFlag,
+  isEnvironment,
+  isFlagStatus,
+  isRole,
+  listFlags,
+} from "@/lib/store";
 
 export const dynamic = "force-dynamic";
 
@@ -8,6 +14,14 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const role = req.headers.get("x-role");
+  if (!isRole(role)) {
+    return NextResponse.json(
+      { error: "missing or invalid x-role header" },
+      { status: 400 }
+    );
+  }
+
   let body: unknown;
   try {
     body = await req.json();
@@ -49,6 +63,13 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
   }
+  // RBAC: creating a prod flag requires Engineer.
+  if (environment === "prod" && role !== "Engineer") {
+    return NextResponse.json(
+      { error: "Only Engineers can change production flags." },
+      { status: 403 }
+    );
+  }
 
   const flag = createFlag({
     name: name.trim(),
@@ -57,6 +78,7 @@ export async function POST(req: NextRequest) {
     rolloutPct,
     environment,
     changedBy: typeof changedBy === "string" && changedBy ? changedBy : "admin",
+    role,
   });
   return NextResponse.json(flag, { status: 201 });
 }

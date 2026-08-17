@@ -1,16 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   deleteFlag,
+  getFlag,
   isEnvironment,
   isFlagStatus,
+  isRole,
   updateFlag,
+  type Role,
   type UpdateFlagInput,
 } from "@/lib/store";
+
+function requestRole(req: NextRequest): Role | null {
+  const role = req.headers.get("x-role");
+  return isRole(role) ? role : null;
+}
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const role = requestRole(req);
+  if (!role) {
+    return NextResponse.json(
+      { error: "missing or invalid x-role header" },
+      { status: 400 }
+    );
+  }
+
   let body: unknown;
   try {
     body = await req.json();
@@ -20,8 +36,24 @@ export async function PATCH(
   const { name, description, status, rolloutPct, environment, changedBy } =
     (body ?? {}) as Record<string, unknown>;
 
+  const existing = getFlag(params.id);
+  if (!existing) {
+    return NextResponse.json({ error: "flag not found" }, { status: 404 });
+  }
+  // RBAC: changes to prod flags (or moving a flag into prod) require Engineer.
+  if (
+    role !== "Engineer" &&
+    (existing.environment === "prod" || environment === "prod")
+  ) {
+    return NextResponse.json(
+      { error: "Only Engineers can change production flags." },
+      { status: 403 }
+    );
+  }
+
   const input: UpdateFlagInput = {
     changedBy: typeof changedBy === "string" && changedBy ? changedBy : "admin",
+    role,
   };
 
   if (name !== undefined) {
@@ -83,10 +115,24 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  if (!deleteFlag(params.id)) {
+  const role = requestRole(req);
+  if (!role) {
+    return NextResponse.json(
+      { error: "missing or invalid x-role header" },
+      { status: 400 }
+    );
+  }
+  // RBAC: deleting a flag in any environment requires Engineer.
+  if (role !== "Engineer") {
+    return NextResponse.json(
+      { error: "Only Engineers can delete flags." },
+      { status: 403 }
+    );
+  }
+  if (!deleteFlag(params.id, "admin", role)) {
     return NextResponse.json({ error: "flag not found" }, { status: 404 });
   }
   return NextResponse.json({ ok: true });

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { Environment, FeatureFlag, FlagStatus } from "@/lib/store";
+import { useRole } from "./RoleContext";
 
 const ENVIRONMENTS: Environment[] = ["dev", "staging", "prod"];
 
@@ -42,9 +43,11 @@ const EMPTY_FORM: FormState = {
 };
 
 export default function FlagsTable() {
+  const { role } = useRole();
   const [flags, setFlags] = useState<FeatureFlag[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [accessDenied, setAccessDenied] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<FormState>(EMPTY_FORM);
@@ -74,7 +77,7 @@ export default function FlagsTable() {
     let res: Response;
     try {
       res = await fetch(path, {
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-role": role },
         ...init,
       });
     } catch {
@@ -83,11 +86,35 @@ export default function FlagsTable() {
     }
     if (!res.ok) {
       const body = await res.json().catch(() => null);
-      setError(body?.error ?? "Request failed");
+      if (res.status === 403) {
+        setAccessDenied(body?.error ?? "You are not allowed to do that.");
+        setError(null);
+      } else {
+        setError(body?.error ?? "Request failed");
+        setAccessDenied(null);
+      }
       return false;
     }
+    setAccessDenied(null);
+    setError(null);
     await refresh();
     return true;
+  }
+
+  function simulateRawApiCall() {
+    const prodFlag =
+      flags.find((f) => f.name === "instant-transfer-limits") ??
+      flags.find((f) => f.environment === "prod");
+    if (!prodFlag) {
+      setError("No prod flag available to simulate against");
+      return;
+    }
+    request(`/api/flags/${prodFlag.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        status: prodFlag.status === "on" ? "off" : "on",
+      }),
+    });
   }
 
   async function handleCreate(e: React.FormEvent) {
@@ -166,6 +193,14 @@ export default function FlagsTable() {
 
   return (
     <div className="space-y-6">
+      {accessDenied && (
+        <div
+          role="alert"
+          className="rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800"
+        >
+          <span className="font-semibold">Access denied</span> — {accessDenied}
+        </div>
+      )}
       {error && (
         <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           {error}
@@ -240,6 +275,16 @@ export default function FlagsTable() {
           Create flag
         </button>
       </form>
+
+      <div className="flex justify-end">
+        <button
+          onClick={simulateRawApiCall}
+          title="Sends a prod-flag toggle PATCH with the current role, bypassing UI guards"
+          className="rounded border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+        >
+          Simulate raw API call (toggle prod flag as {role})
+        </button>
+      </div>
 
       <div className="overflow-x-auto">
         <table className="w-full border-collapse text-sm">
